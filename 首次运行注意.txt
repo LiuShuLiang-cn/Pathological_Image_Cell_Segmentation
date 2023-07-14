@@ -1,0 +1,6 @@
+pip install -v -e .
+
+
+work_dirs文件夹在：
+链接：https://pan.baidu.com/s/1SxCNihVRw_SpBxg4hi8Mvw 
+提取码：hmk7

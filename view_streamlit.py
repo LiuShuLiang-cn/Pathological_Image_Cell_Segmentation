@@ -1,7 +1,7 @@
 import streamlit as st
 import os
 from streamlit_option_menu import option_menu
-
+import numpy as np
 import pandas as pd
 from raceplotly.plots import barplot
 from collections import deque
@@ -9,28 +9,29 @@ import json
 import train
 import test
 import tools.analysis_tools.analyze_logs as alog
+import tools.analysis_tools.confusion_matrix as tac
+import os
+from streamlit_echarts import st_echarts
+
+def is_exit(path):
+    # 判断目录是否存在
+    if not os.path.exists(path):
+        # 如果目录不存在，则创建目录
+        os.makedirs(path)
+        print(f"已创建目录：{path}")
+    else:
+        print(f"目录已存在：{path}")
 
 def train_model(params):
     st.write("开始训练模型...")
     st.write("训练参数：", params)
     # 在这里执行模型训练的逻辑
     model=train.run_model(params)
-    # st.write(model)
     st.write('Train success!!!!⭐')
-
-# 获取下一级目录中的文件夹，主要用来获取data的根目录
-def get_all_folders(folder_path, relative_path=""):
-    folders = []
-    for item in os.listdir(folder_path):
-        item_path = os.path.join(folder_path, item)
-        if os.path.isdir(item_path):
-            relative_item_path = os.path.join(relative_path, item) + "/"
-            folders.append(relative_item_path)
-    return folders
 
 # 上传，获取配置文件
 def creat_upfile_config():
-    config_file = st.file_uploader("上传一张测试图片", type=["jpg","png"])
+    config_file = st.file_uploader("Upload a configuration file", type=["jpg","png"])
     config_path=''
     filename=''
     if config_file is not None:
@@ -40,7 +41,6 @@ def creat_upfile_config():
         config_path = f"./uploaded_files/{config_filename}"  # 指定保存文件的路径
         with open(config_path, "wb") as f:
             f.write(config_file.getvalue())  # 保存上传文件到指定路径
-        st.write(config_path)
     return config_path,filename
 
 # 获取指定文件夹下的文件
@@ -52,25 +52,6 @@ def list_files_in_directory(directory):
             files.append(file)
     return files
 
-# 获取类别名字
-def get_multiple_names():
-    names = []
-    num_names = st.sidebar.number_input("请输入名字数量", min_value=1, step=1)
-    for i in range(num_names):
-        name = st.sidebar.text_input(f"请输入名字 {i+1}")
-        names.append(name)
-    return names
-
-# 生成种类颜色
-def generate_colors(num_colors):
-    colors = []
-    for i in range(num_colors):
-        red = (i * 71) % 256
-        green = (i * 113) % 256
-        blue = (i * 157) % 256
-        colors.append((red, green, blue))
-    return colors
-
 def creat_page_train():
     sbdir = st.sidebar.form("训练参数")
         # 创建侧边栏来设置训练参数
@@ -80,29 +61,15 @@ def creat_page_train():
     learning_rate = sbdir.slider("学习率", min_value=0.001, max_value=0.02, value=0.02)
     batch_size = sbdir.selectbox("批次大小", options=[1, 2, 4, 8,16], index=2)
 
-    # 过滤出文件夹
-    # folders = get_all_folders('./data/', './data/')
-    # 选取数据集
-    # data_root = st.sidebar.selectbox("数据根目录", folders)
-
     # 选择配置文件
-    config_model='./config_model/'
-    config_path=config_model+sbdir.selectbox("请选择一个配置文件", list_files_in_directory(config_model))
-
-    # 输入类别数目
-    # names = get_multiple_names()
-    # metainfo={'classes': ('',), 'palette': [(0, 0, 0)]}
-    # metainfo['classes'] = tuple(names)
-    # metainfo['palette'] = generate_colors(len(names))
+    config_path='./config_model/'+sbdir.selectbox("请选择一个配置文件", list_files_in_directory('./config_model/'))
 
     if sbdir.form_submit_button("测试参数"):
         train_params = {
             "epochs": epochs,
             "learning_rate": learning_rate,
             "batch_size": batch_size,
-            # "data_folder": data_root,
-            "config": config_path,
-            # "metainfo": metainfo
+            "config": config_path
         }
         st.write(train_params)
     # 创建开始训练按钮
@@ -111,9 +78,7 @@ def creat_page_train():
             "epochs": epochs,
             "learning_rate": learning_rate,
             "batch_size": batch_size,
-            # "data_root": data_root,
-            "config": config_path,
-            # "metainfo": metainfo
+            "config": config_path
         }
         train_model(train_params)
 
@@ -121,37 +86,51 @@ def creat_page_test():
     sbdir = st.sidebar.form("训练参数")
     sbdir.title("训练参数")
     # 选择配置文件
-    config_model='./config_model/'
-    config_path=config_model+sbdir.selectbox("请选择一个配置文件", list_files_in_directory(config_model))
-    epoch='./work_dirs/'
-    epoch_path=epoch+sbdir.selectbox("请选择一个权重文件", list_files_in_directory(epoch))
+    config_path='./config_model/'+sbdir.selectbox("请选择一个配置文件", list_files_in_directory('./config_model/'))
+    epoch_path='./work_dirs/'+sbdir.selectbox("请选择一个权重文件", list_files_in_directory('./work_dirs/'))
     img_path,filename=creat_upfile_config()
-    
+    iou = sbdir.slider("iou", min_value=0.0, max_value=1.0, value=0.2)
+    pkl_path='./work_dirs/'+sbdir.selectbox("请选择一个pkl文件", list_files_in_directory('./work_dirs/'))
     if sbdir.form_submit_button("测试参数"):
         train_params = {
             "epochs": epoch_path,
             "config_path": config_path,
             "img_path": img_path,
-            "filename": filename
-
+            "filename": filename,
+            "iou": iou
         }
         st.write(train_params)
-    if sbdir.form_submit_button("预测"):
+    if sbdir.form_submit_button("统计"):
+            train_params = {
+            "epochs": epoch_path,
+            "config_path": config_path,
+            "img_path": img_path,
+            "filename": filename,
+            "iou": iou
+            }
+            res_path,options=test.predict(train_params,iou)
+            col1, col2 = st.columns(2)
+            # 在第一列显示第一张图片
+            col1.image(img_path, use_column_width=True)
+            # 在第二列显示第二张图片
+            col2.image(res_path, use_column_width=True)
+            # st.pyplot(fig)
+            st_echarts(options,height=400)
+    if sbdir.form_submit_button("混淆矩阵"):
         train_params = {
             "epochs": epoch_path,
             "config_path": config_path,
             "img_path": img_path,
-            "filename": filename
-        }
-        res_path=test.predict(train_params)
-        # 创建Streamlit的两列布局
-        col1, col2 = st.columns(2)
-        # 在第一列显示第一张图片
-        col1.image(img_path, use_column_width=True)
+            "filename": filename,
+            "iou": iou,
+            "pkl_path": pkl_path
+            }
+        fig=tac.matrix(train_params)
+        # 
+        st.set_option('deprecation.showPyplotGlobalUse', False)
+        st.pyplot(fig)
 
-        # 在第二列显示第二张图片
-        col2.image(res_path, use_column_width=True)
-
+        
 def creat_page_view():
     st.markdown(""" <style> .font {
     font-size:25px ; font-family: 'Cooper Black'; color: #FF9633;} 
@@ -303,19 +282,31 @@ def creat_page_view():
 def creat_page_draw():
     sbdir = st.sidebar.form("diy参数画图")
     sbdir.title("diy参数画图")
-    json_path='./json/'+sbdir.selectbox("请选择一个配置文件", list_files_in_directory('./json'))
-    keys=sbdir.multiselect("选择纵坐标（可多选）",
-                      ["lr", "data_time", "loss", "loss_rpn_cls", "loss_rpn_bbox", "loss_cls", "acc", "loss_bbox", "loss_mask", "loss_mask_iou", "time", "epoch", "memory", "step"],
-                      ["loss_bbox", "loss_mask","loss_cls"])
+    json_path='./json/'+sbdir.selectbox("请选择一个配置文件", list_files_in_directory('./json/'))
+    with open(json_path, 'r') as f:
+        first_line = f.readline().strip()
+
+    # 解析第一行的 JSON 数据
+    data = json.loads(first_line)
+
+    # 获取键
+    keys = np.array(list(data.keys()))
+    keys=sbdir.multiselect("选择纵坐标（可多选）",keys
+                      )
     if sbdir.form_submit_button("开始画图"):
         json_ppth=[]
         json_ppth.append(json_path)
         img_path=alog.draw_view(json_ppth,keys)
         print(img_path)
-
         st.image(img_path)
 
 def main():
+    # 测试文件是否存在
+    is_exit('./config_model/')
+    is_exit('./work_dirs/')
+    is_exit('./json/')
+    is_exit('./uploaded_files/')
+
     # 设置页面标题和描述
     with st.sidebar:
         choose = option_menu("Main Menu", ["Train", "Test","View", "Draw"],
@@ -328,9 +319,8 @@ def main():
         "nav-link-selected": {"background-color": "#02ab21"},
     }
     )
-
     st.title("MMDETECTION VIEW")
-    st.header("这是一个简单的模型展示示例")
+    st.header("病例细胞实例分割可视化页面")
     # navigation = st.sidebar.radio("Navigation", ["Train", "Test"])
     if choose == "Train":
         creat_page_train()
@@ -340,7 +330,6 @@ def main():
         creat_page_view()
     elif choose=="Draw":
         creat_page_draw()
-
     # 在这里添加其他的应用程序逻辑
 
 if __name__ == '__main__':

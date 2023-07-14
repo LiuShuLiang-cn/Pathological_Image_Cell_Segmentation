@@ -105,7 +105,7 @@ def run_model(data):
     cfg=parse_diy(data)
     
     cfg.launcher = args.launcher
-    # vs.st.write(cfg)
+    vs.st.write(cfg)
     if args.cfg_options is not None:
         cfg.merge_from_dict(args.cfg_options)
     
@@ -153,4 +153,3 @@ def run_model(data):
         runner = RUNNERS.build(cfg)
 
     return runner.train()
-    # return 
